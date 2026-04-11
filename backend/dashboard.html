@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>パチスロ分析ダッシュボード</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .header-controls select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .header-controls button {
+            padding: 8px 16px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .header-controls button:hover {
+            background: #764ba2;
+        }
+
+        .updated-time {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .tab-button {
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab-button.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-button:hover {
+            color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 16px;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #f5f5f5;
+        }
+
+        .stat:last-child {
+            border-bottom: none;
+        }
+
+        .stat-label {
+            color: #999;
+            font-size: 13px;
+        }
+
+        .stat-value {
+            color: #333;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .positive {
+            color: #27ae60;
+        }
+
+        .negative {
+            color: #e74c3c;
+        }
+
+        .table-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .table-container h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 16px;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f9f9f9;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #ddd;
+            font-size: 13px;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 14px;
+        }
+
+        tr:hover {
+            background: #fafafa;
+        }
+
+        .prob-bar-container {
+            width: 100%;
+            background: #f0f0f0;
+            border-radius: 4px;
+            overflow: hidden;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            margin: 0;
+        }
+
+        .prob-bar {
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 6px;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-weekday-machine {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge-weekday {
+            background: #cfe2ff;
+            color: #084298;
+        }
+
+        .badge-machine {
+            background: #fff3cd;
+            color: #664d03;
+        }
+
+        .badge-overall {
+            background: #e2e3e5;
+            color: #383d41;
+        }
+
+        .pattern-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .pattern-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-left: 4px solid #667eea;
+        }
+
+        .pattern-card h3 {
+            color: #333;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .pattern-stat {
+            font-size: 12px;
+            color: #666;
+            padding: 4px 0;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            color: #999;
+            padding: 20px;
+        }
+
+        .error {
+            background: #ffe6e6;
+            color: #c00;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #999;
+            padding: 40px 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- ヘッダー -->
+        <div class="header">
+            <div class="header-top">
+                <h1>🎰 パチスロ分析ダッシュボード</h1>
+                <div class="header-controls">
+                    <select id="storeSelect">
+                        <option value="1">SUPER CONCORDE 市野</option>
+                    </select>
+                    <button onclick="loadAllDashboards()">更新</button>
+                </div>
+            </div>
+            <div class="updated-time">
+                最終更新: <span id="lastUpdated">--</span>
+            </div>
+        </div>
+
+        <div id="errorContainer"></div>
+
+        <!-- タブ -->
+        <div class="tabs">
+            <button class="tab-button active" onclick="switchTab('slots')">📊 スロット分析</button>
+            <button class="tab-button" onclick="switchTab('pachinko')">🎲 パチンコ分析</button>
+        </div>
+
+        <!-- スロットタブ -->
+        <div id="slots" class="tab-content active">
+            <!-- サマリーカード -->
+            <div class="grid">
+                <div class="card">
+                    <h2>📈 全体期待値</h2>
+                    <div id="slotsOverallEV" class="loading">読み込み中...</div>
+                </div>
+                <div class="card">
+                    <h2>🎯 モデル精度</h2>
+                    <div id="slotsModelEval" class="loading">読み込み中...</div>
+                </div>
+                <div class="card">
+                    <h2>📅 データ期間</h2>
+                    <div id="slotsDataPeriod" class="loading">読み込み中...</div>
+                </div>
+            </div>
+
+            <!-- 当たり確率ランキング -->
+            <div class="table-container">
+                <h2>⭐ 当たり確率ランキング（Top 10）</h2>
+                <div id="slotsHitProbTable" class="loading">読み込み中...</div>
+            </div>
+
+            <!-- 期待値ランキング -->
+            <div class="table-container">
+                <h2>💰 期待値ランキング（Top 10）</h2>
+                <div id="slotsEVTable" class="loading">読み込み中...</div>
+            </div>
+
+            <!-- パターン分析 -->
+            <div>
+                <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px;">
+                    <h2 style="color: #667eea; margin-bottom: 15px; font-size: 16px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px;">🎨 出玉パターン分析</h2>
+                    <div id="slotsPatternsContainer" class="pattern-cards">
+                        <div class="loading">読み込み中...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- モデル精度グラフ -->
+            <div class="chart-container">
+                <h2 style="color: #667eea; margin-bottom: 15px; font-size: 16px;">📊 7日間の日次精度</h2>
+                <canvas id="accuracyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- パチンコタブ -->
+        <div id="pachinko" class="tab-content">
+            <!-- 全体期待値 -->
+            <div class="grid">
+                <div class="card">
+                    <h2>📈 全体期待値</h2>
+                    <div id="pachinkoOverallEV" class="loading">読み込み中...</div>
+                </div>
+            </div>
+
+            <!-- 曜日別傾向 -->
+            <div class="table-container">
+                <h2>📅 曜日別傾向</h2>
+                <div id="pachinkoWeekdayTrends" class="loading">読み込み中...</div>
+            </div>
+
+            <!-- 機種別ランキング（信頼区間付き） -->
+            <div class="table-container">
+                <h2>💰 機種別ランキング（95%信頼区間付き）</h2>
+                <div id="pachinkoMachineRanking" class="loading">読み込み中...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api';
+        let accuracyChart = null;
+
+        async function loadAllDashboards() {
+            const storeId = document.getElementById('storeSelect').value;
+            document.getElementById('errorContainer').innerHTML = '';
+            updateLastUpdatedTime();
+
+            // スロット
+            await loadSlotsDashboard(storeId);
+
+            // パチンコ
+            await loadPachinkoDashboard(storeId);
+        }
+
+        async function loadSlotsDashboard(storeId) {
+            try {
+                const response = await fetch(
+                    `${API_BASE}/analysis/slots/dashboard?store_id=${storeId}`
+                );
+
+                if (!response.ok) throw new Error(`API Error: ${response.status}`);
+
+                const data = await response.json();
+
+                // 全体期待値
+                renderSlotsOverallEV(data.overall_expected_value);
+
+                // モデル評価
+                renderSlotsModelEval(data.model_evaluation);
+
+                // データ期間
+                renderSlotsDataPeriod(data.metadata?.data_period_days);
+
+                // 当たり確率ランキング
+                renderHitProbabilityTable(data.hit_probability_predictions);
+
+                // 期待値ランキング
+                renderExpectedValueTable(data.expected_value_ranking);
+
+                // パターン分析
+                renderPatterns(data.patterns);
+
+                // グラフ
+                renderAccuracyChart(data.model_evaluation?.daily_stats);
+
+            } catch (error) {
+                console.error('Error loading slots dashboard:', error);
+                showError(`スロット分析読み込みエラー: ${error.message}`);
+            }
+        }
+
+        async function loadPachinkoDashboard(storeId) {
+            try {
+                const response = await fetch(
+                    `${API_BASE}/analysis/pachinko/dashboard?store_id=${storeId}`
+                );
+
+                if (!response.ok) throw new Error(`API Error: ${response.status}`);
+
+                const data = await response.json();
+
+                // 全体期待値
+                renderPachinkoOverallEV(data.overall_expected_value);
+
+                // 曜日別傾向
+                renderPachinkoWeekdayTrends(data.weekday_trends);
+
+                // 機種別ランキング（信頼区間付き）
+                renderPachinkoMachineRanking(data.machine_ranking);
+
+            } catch (error) {
+                console.error('Error loading pachinko dashboard:', error);
+                showError(`パチンコ分析読み込みエラー: ${error.message}`);
+            }
+        }
+
+        function renderSlotsOverallEV(data) {
+            if (!data) {
+                document.getElementById('slotsOverallEV').innerHTML = '<div class="empty-state">データ不足</div>';
+                return;
+            }
+
+            const html = `
+                <div class="stat">
+                    <span class="stat-label">平均差枚数</span>
+                    <span class="stat-value ${data.average_diff >= 0 ? 'positive' : 'negative'}">
+                        ${Math.round(data.average_diff)}枚
+                    </span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">標準偏差</span>
+                    <span class="stat-value">${(data.stddev || 0).toFixed(1)}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">最高値</span>
+                    <span class="stat-value positive">${Math.round(data.max_diff)}枚</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">最低値</span>
+                    <span class="stat-value negative">${Math.round(data.min_diff)}枚</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">総試行数</span>
+                    <span class="stat-value">${data.total_plays}回</span>
+                </div>
+            `;
+            document.getElementById('slotsOverallEV').innerHTML = html;
+        }
+
+        function renderSlotsModelEval(data) {
+            if (!data) {
+                document.getElementById('slotsModelEval').innerHTML = '<div class="empty-state">データ不足</div>';
+                return;
+            }
+
+            const html = `
+                <div class="stat">
+                    <span class="stat-label">全体精度</span>
+                    <span class="stat-value positive">${data.overall_accuracy?.toFixed(1)}%</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">予測台数</span>
+                    <span class="stat-value">${data.total_predictions}台</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">検証済み</span>
+                    <span class="stat-value">${data.total_verified}台</span>
+                </div>
+            `;
+            document.getElementById('slotsModelEval').innerHTML = html;
+        }
+
+        function renderSlotsDataPeriod(dataPeriodDays) {
+            if (!dataPeriodDays) {
+                document.getElementById('slotsDataPeriod').innerHTML = '<div class="empty-state">データ不足</div>';
+                return;
+            }
+
+            const html = `
+                <div class="stat">
+                    <span class="stat-label">データ期間</span>
+                    <span class="stat-value">${dataPeriodDays}日</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">学習対象</span>
+                    <span class="stat-value">最新60日</span>
+                </div>
+            `;
+            document.getElementById('slotsDataPeriod').innerHTML = html;
+        }
+
+        function renderHitProbabilityTable(predictions) {
+            if (!predictions || predictions.length === 0) {
+                document.getElementById('slotsHitProbTable').innerHTML = '<div class="empty-state">データがありません</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>機種名</th>
+                            <th style="width: 200px;">当たり確率</th>
+                            <th>期待値</th>
+                            <th>信頼度</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            predictions.forEach(pred => {
+                const prob = (pred.hit_probability * 100).toFixed(1);
+                const conf = (pred.confidence_score * 100).toFixed(1);
+                const evClass = pred.expected_value >= 0 ? 'positive' : 'negative';
+
+                html += `
+                    <tr>
+                        <td>${pred.machine_name}</td>
+                        <td>
+                            <div class="prob-bar-container">
+                                <div class="prob-bar" style="width: ${prob}%">${prob}%</div>
+                            </div>
+                        </td>
+                        <td class="${evClass}">${Math.round(pred.expected_value)}枚</td>
+                        <td>${conf}%</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('slotsHitProbTable').innerHTML = html;
+        }
+
+        function renderExpectedValueTable(evList) {
+            if (!evList || evList.length === 0) {
+                document.getElementById('slotsEVTable').innerHTML = '<div class="empty-state">データがありません</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>機種名</th>
+                            <th>期待値</th>
+                            <th>サンプル数</th>
+                            <th>ソース</th>
+                            <th>信頼度</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            evList.forEach(ev => {
+                const evClass = ev.expected_value >= 0 ? 'positive' : 'negative';
+                const sourceBadgeClass = `badge badge-${ev.source}`;
+                const sourceLabel = {
+                    'weekday_machine': '曜日×機種',
+                    'weekday': '曜日',
+                    'machine': '機種',
+                    'overall': '全体'
+                }[ev.source] || ev.source;
+
+                html += `
+                    <tr>
+                        <td>${ev.machine_name}</td>
+                        <td class="${evClass}">${Math.round(ev.expected_value)}枚</td>
+                        <td>${ev.sample_count}</td>
+                        <td><span class="${sourceBadgeClass}">${sourceLabel}</span></td>
+                        <td>${Math.round(ev.confidence)}%</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('slotsEVTable').innerHTML = html;
+        }
+
+        function renderPatterns(patterns) {
+            if (!patterns || patterns.length === 0) {
+                document.getElementById('slotsPatternsContainer').innerHTML = '<div class="empty-state">データがありません</div>';
+                return;
+            }
+
+            let html = '';
+            patterns.forEach(pattern => {
+                const summary = pattern.summary || {};
+                html += `
+                    <div class="pattern-card">
+                        <h3>${pattern.pattern_name}</h3>
+                        <div class="pattern-stat">台数: <strong>${pattern.machines_count}台</strong></div>
+                        <div class="pattern-stat">平均差枚: <strong class="${(summary.avg_diff_in_pattern || 0) >= 0 ? 'positive' : 'negative'}">${Math.round(summary.avg_diff_in_pattern || 0)}枚</strong></div>
+                        <div class="pattern-stat">勝率: <strong>${(summary.win_rate_in_pattern || 0).toFixed(1)}%</strong></div>
+                        <div class="pattern-stat">ボラティリティ: <strong>${(summary.volatility_in_pattern || 0).toFixed(1)}</strong></div>
+                    </div>
+                `;
+            });
+
+            document.getElementById('slotsPatternsContainer').innerHTML = html;
+        }
+
+        function renderAccuracyChart(dailyStats) {
+            if (!dailyStats || dailyStats.length === 0) {
+                return;
+            }
+
+            const ctx = document.getElementById('accuracyChart');
+            if (!ctx) return;
+
+            const labels = dailyStats.map(stat => {
+                const date = new Date(stat.date);
+                return `${date.getMonth() + 1}/${date.getDate()}`;
+            });
+
+            const accuracies = dailyStats.map(stat => stat.accuracy || 0);
+
+            if (accuracyChart) {
+                accuracyChart.destroy();
+            }
+
+            accuracyChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '日次精度（%）',
+                        data: accuracies,
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 5,
+                        pointBackgroundColor: '#667eea',
+                        tension: 0.4,
+                        fill: true,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderPachinkoOverallEV(data) {
+            if (!data) {
+                document.getElementById('pachinkoOverallEV').innerHTML = '<div class="empty-state">データ不足</div>';
+                return;
+            }
+
+            const html = `
+                <div class="stat">
+                    <span class="stat-label">平均差枚数</span>
+                    <span class="stat-value ${data.average_diff >= 0 ? 'positive' : 'negative'}">
+                        ${Math.round(data.average_diff)}枚
+                    </span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">標準偏差</span>
+                    <span class="stat-value">${(data.stddev || 0).toFixed(1)}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">最高値</span>
+                    <span class="stat-value positive">${Math.round(data.max_diff)}枚</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">最低値</span>
+                    <span class="stat-value negative">${Math.round(data.min_diff)}枚</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">総試行数</span>
+                    <span class="stat-value">${data.total_plays}回</span>
+                </div>
+            `;
+            document.getElementById('pachinkoOverallEV').innerHTML = html;
+        }
+
+        function renderPachinkoWeekdayTrends(trends) {
+            if (!trends || trends.length === 0) {
+                document.getElementById('pachinkoWeekdayTrends').innerHTML = '<div class="empty-state">データがありません</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>曜日</th>
+                            <th>平均差枚</th>
+                            <th>勝率</th>
+                            <th>サンプル数</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            trends.forEach(trend => {
+                const avgClass = trend.avg_diff >= 0 ? 'positive' : 'negative';
+                html += `
+                    <tr>
+                        <td>${trend.day_name}</td>
+                        <td class="${avgClass}">${Math.round(trend.avg_diff)}枚</td>
+                        <td>${trend.win_rate.toFixed(1)}%</td>
+                        <td>${trend.sample_count}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('pachinkoWeekdayTrends').innerHTML = html;
+        }
+
+        function renderPachinkoMachineRanking(ranking) {
+            if (!ranking || ranking.length === 0) {
+                document.getElementById('pachinkoMachineRanking').innerHTML = '<div class="empty-state">データがありません</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>機種名</th>
+                            <th>期待値</th>
+                            <th>95%信頼区間</th>
+                            <th>勝率</th>
+                            <th>サンプル数</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            ranking.forEach(machine => {
+                const evClass = machine.expected_value >= 0 ? 'positive' : 'negative';
+                const ciText = `${Math.round(machine.ci_lower)}～${Math.round(machine.ci_upper)}枚`;
+
+                html += `
+                    <tr>
+                        <td>${machine.machine_name}</td>
+                        <td class="${evClass}">${Math.round(machine.expected_value)}枚</td>
+                        <td>${ciText}</td>
+                        <td>${machine.win_rate.toFixed(1)}%</td>
+                        <td>${machine.sample_count}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('pachinkoMachineRanking').innerHTML = html;
+        }
+
+        function switchTab(tabName) {
+            // タブコンテンツの非表示
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.getElementById(tabName).classList.add('active');
+
+            // タブボタンの非表示
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+        }
+
+        function showError(message) {
+            document.getElementById('errorContainer').innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        function updateLastUpdatedTime() {
+            const now = new Date();
+            const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+            document.getElementById('lastUpdated').textContent = timeStr;
+        }
+
+        // ページロード時に読み込み
+        window.addEventListener('load', loadAllDashboards);
+    </script>
+</body>
+</html>

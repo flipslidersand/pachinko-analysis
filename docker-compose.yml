@@ -1,0 +1,50 @@
+version: '3.8'
+
+networks:
+  host_network:
+    driver: bridge
+
+services:
+  # Selenium スタンドアロン Chrome
+  selenium-chrome:
+    restart: always
+    image: selenium/standalone-chrome:latest
+    container_name: pachinko_selenium
+    ports:
+      - "4444:4444"
+      - "7900:7900"  # VNC ポート（デバッグ用）
+    environment:
+      - SE_NODE_SESSION_TIMEOUT=300
+      - SE_NODE_MAX_SESSIONS=5
+    shm_size: 2gb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # FastAPI バックエンド
+  backend:
+    restart: always
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pachinko_backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres_prod_pass@db_postgres:5432/prod_db
+      SELENIUM_HOST: selenium-chrome
+      SELENIUM_PORT: 4444
+      PYTHONUNBUFFERED: 1
+    depends_on:
+      selenium-chrome:
+        condition: service_healthy
+    networks:
+      - default
+      - host_network
+    extra_hosts:
+      - "db_postgres:172.17.0.1"  # Docker ホスト IP
+    volumes:
+      - ./backend:/app
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000
