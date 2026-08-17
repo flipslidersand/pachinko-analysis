@@ -91,52 +91,6 @@ CREATE TABLE IF NOT EXISTS daily_machine_stats (
     UNIQUE(store_id, machine_id, target_date)
 );
 
--- 学習用特徴量テーブル（Phase 1 後半）
-CREATE TABLE IF NOT EXISTS ml_features (
-    id SERIAL PRIMARY KEY,
-    store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-    machine_id INTEGER NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
-    machine_type VARCHAR(20) NOT NULL,  -- 'S' or 'P'
-    feature_date DATE NOT NULL,
-
-    -- 直近差枚
-    prev_1d_diff INTEGER,
-    prev_2d_diff INTEGER,
-    prev_3d_diff INTEGER,
-
-    -- 移動平均
-    avg_3d_diff DECIMAL(10, 2),
-    avg_7d_diff DECIMAL(10, 2),
-    avg_30d_diff DECIMAL(10, 2),
-
-    -- 標準偏差
-    stddev_3d DECIMAL(10, 2),
-    stddev_7d DECIMAL(10, 2),
-    stddev_30d DECIMAL(10, 2),
-
-    -- トレンド
-    trend_up_days_7d INTEGER,
-    trend_down_days_7d INTEGER,
-    positive_ratio_7d DECIMAL(5, 2),
-
-    -- ボラティリティ
-    max_diff_30d INTEGER,
-    min_diff_30d INTEGER,
-    volatility_30d DECIMAL(10, 2),
-
-    -- ゲーム数
-    total_games_1d INTEGER,
-
-    -- 曜日
-    day_of_week INTEGER,
-
-    -- ラベル（スロット用）
-    hit_label INTEGER,  -- 1: diff > THRESHOLD, 0: else
-
-    created_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(store_id, machine_id, feature_date)
-);
-
 -- 予測結果テーブル（修正版：スロット専用）
 CREATE TABLE IF NOT EXISTS slot_predictions (
     id SERIAL PRIMARY KEY,
@@ -172,7 +126,5 @@ CREATE INDEX IF NOT EXISTS idx_raw_machine_data_store_id ON raw_machine_data(sto
 CREATE INDEX IF NOT EXISTS idx_raw_machine_data_date ON raw_machine_data(target_date);
 CREATE INDEX IF NOT EXISTS idx_daily_machine_stats_store_id ON daily_machine_stats(store_id);
 CREATE INDEX IF NOT EXISTS idx_daily_machine_stats_date ON daily_machine_stats(target_date);
-CREATE INDEX IF NOT EXISTS idx_ml_features_store_id ON ml_features(store_id);
-CREATE INDEX IF NOT EXISTS idx_ml_features_date ON ml_features(feature_date);
 CREATE INDEX IF NOT EXISTS idx_slot_predictions_store_id ON slot_predictions(store_id);
 CREATE INDEX IF NOT EXISTS idx_slot_predictions_date ON slot_predictions(prediction_date);
