@@ -197,109 +197,6 @@ async def aggregate_daily_stats_job():
         db.close()
 
 
-async def generate_ml_features_job():
-    """daily_machine_stats から ml_features を生成するジョブ"""
-    db = SessionLocal()
-    try:
-        logger.info("🔄 Starting ML features generation job")
-
-        # 予測対象日（今日の次の日）より前のデータで特徴量を生成
-        target_date = date.today()
-
-        sql = """
-        INSERT INTO ml_features (
-            store_id, machine_id, machine_type, feature_date,
-            prev_1d_diff, prev_2d_diff, prev_3d_diff,
-            avg_3d_diff, avg_7d_diff, avg_30d_diff,
-            stddev_3d, stddev_7d, stddev_30d,
-            trend_up_days_7d, trend_down_days_7d, positive_ratio_7d,
-            max_diff_30d, min_diff_30d, volatility_30d,
-            total_games_1d, day_of_week, hit_label
-        )
-        -- 各機種の最新日(rn=1)を基準日とし、直近30日の集計行(r)から特徴量を生成する。
-        -- 旧実装は窓関数(OVER)と GROUP BY を混在させ「rn2.row_num must appear in
-        -- the GROUP BY clause」で毎回失敗していたため、FILTER 付き集約に置換した。
-        WITH ranked_data AS (
-            SELECT
-                dms.store_id,
-                dms.machine_id,
-                dms.machine_type,
-                dms.target_date,
-                dms.diff,
-                dms.games_count,
-                ROW_NUMBER() OVER (
-                    PARTITION BY dms.store_id, dms.machine_id
-                    ORDER BY dms.target_date DESC
-                ) as rn
-            FROM daily_machine_stats dms
-            WHERE dms.target_date < :target_date
-        ),
-        latest AS (
-            SELECT store_id, machine_id, machine_type, target_date
-            FROM ranked_data
-            WHERE rn = 1
-        )
-        SELECT
-            l.store_id,
-            l.machine_id,
-            l.machine_type,
-            l.target_date,
-            -- 前日、2日前、3日前の差枚
-            MAX(r.diff) FILTER (WHERE r.rn = 1) as prev_1d_diff,
-            MAX(r.diff) FILTER (WHERE r.rn = 2) as prev_2d_diff,
-            MAX(r.diff) FILTER (WHERE r.rn = 3) as prev_3d_diff,
-            -- 移動平均
-            ROUND(AVG(r.diff) FILTER (WHERE r.rn <= 3), 2)  as avg_3d_diff,
-            ROUND(AVG(r.diff) FILTER (WHERE r.rn <= 7), 2)  as avg_7d_diff,
-            ROUND(AVG(r.diff) FILTER (WHERE r.rn <= 30), 2) as avg_30d_diff,
-            -- 標準偏差
-            ROUND(STDDEV(r.diff) FILTER (WHERE r.rn <= 3), 2)  as stddev_3d,
-            ROUND(STDDEV(r.diff) FILTER (WHERE r.rn <= 7), 2)  as stddev_7d,
-            ROUND(STDDEV(r.diff) FILTER (WHERE r.rn <= 30), 2) as stddev_30d,
-            -- トレンド（過去7日）
-            COUNT(*) FILTER (WHERE r.rn <= 7 AND r.diff > 0)::INTEGER as trend_up_days_7d,
-            COUNT(*) FILTER (WHERE r.rn <= 7 AND r.diff < 0)::INTEGER as trend_down_days_7d,
-            ROUND(
-                100.0 * COUNT(*) FILTER (WHERE r.rn <= 7 AND r.diff > 0)
-                / NULLIF(COUNT(*) FILTER (WHERE r.rn <= 7), 0), 2
-            ) as positive_ratio_7d,
-            -- ボラティリティ（過去30日）
-            MAX(r.diff) FILTER (WHERE r.rn <= 30)::INTEGER as max_diff_30d,
-            MIN(r.diff) FILTER (WHERE r.rn <= 30)::INTEGER as min_diff_30d,
-            ROUND(STDDEV(r.diff) FILTER (WHERE r.rn <= 30), 2) as volatility_30d,
-            -- ゲーム数
-            MAX(r.games_count) FILTER (WHERE r.rn = 1)::INTEGER as total_games_1d,
-            -- 曜日
-            EXTRACT(DOW FROM l.target_date)::INTEGER as day_of_week,
-            -- ラベル
-            CASE WHEN MAX(r.diff) FILTER (WHERE r.rn = 1) > 1000 THEN 1 ELSE 0 END::INTEGER as hit_label
-        FROM latest l
-        JOIN ranked_data r
-          ON r.store_id = l.store_id
-         AND r.machine_id = l.machine_id
-         AND r.rn <= 30
-        WHERE NOT EXISTS (
-            SELECT 1 FROM ml_features mlf
-            WHERE mlf.store_id = l.store_id
-                AND mlf.machine_id = l.machine_id
-                AND mlf.feature_date = l.target_date
-        )
-        GROUP BY l.store_id, l.machine_id, l.machine_type, l.target_date
-        """
-
-        result = db.execute(text(sql), {"target_date": target_date})
-        db.commit()
-
-        logger.info(f"✅ ML features generation completed: {result.rowcount} rows inserted")
-
-    except Exception as e:
-        logger.error(f"❌ ML features generation failed: {e}")
-        db.rollback()
-
-    finally:
-        db.close()
-
-
 async def run_daily_predictions_job():
     """全店舗のスロット当たり確率予測を実行してDBに保存するジョブ"""
     db = SessionLocal()
@@ -380,14 +277,6 @@ def init_scheduler():
         aggregate_daily_stats_job,
         CronTrigger(hour=2, minute=0),
         name="Aggregate Daily Stats at 2AM",
-        replace_existing=True
-    )
-
-    # 毎日 02:30 に ml_features を生成
-    scheduler.add_job(
-        generate_ml_features_job,
-        CronTrigger(hour=2, minute=30),
-        name="Generate ML Features at 2:30AM",
         replace_existing=True
     )
 
