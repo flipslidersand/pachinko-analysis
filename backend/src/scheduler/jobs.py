@@ -1,6 +1,7 @@
 """定期実行ジョブ"""
 import logging
-from datetime import time, date
+import hashlib
+from datetime import time, date, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -61,23 +62,70 @@ async def scrape_and_save_job(hall_id: str, machine_type: str = "S"):
         table = tables[0]
         rows = table.find_all("tr")
 
+        # スケジュール実行では「直前に確定した営業日 = 前日」を対象にする。
+        # aggregate は target_date < CURRENT_DATE を集計するため、前日を書けば
+        # 同夜のうちに aggregate → predict まで一気通貫で流れる（#11 問題B の方針）。
+        target_date = date.today() - timedelta(days=1)
+
         saved_count = 0
         for row in rows[1:]:
             cells = row.find_all("td")
-            if len(cells) < 2:
+            if len(cells) < 8:  # スロット：9列、パチンコ：8列
                 continue
 
             try:
+                # routers/scraper.py の save-data と同じ解析ロジック
+                unit_number = cells[1].get_text(strip=True) if len(cells) > 1 else ""
                 machine_name = cells[3].get_text(strip=True) if len(cells) > 3 else ""
-                if not machine_name:
+                if not machine_name or not unit_number:
                     continue
 
+                try:
+                    feature_count1 = int(cells[4].get_text(strip=True)) if len(cells) > 4 else 0
+                except (ValueError, IndexError):
+                    feature_count1 = 0
+                try:
+                    feature_count2 = int(cells[5].get_text(strip=True)) if len(cells) > 5 else 0
+                except (ValueError, IndexError):
+                    feature_count2 = 0
+                try:
+                    start_count = int(cells[-1].get_text(strip=True)) if len(cells) > 0 else 0
+                except (ValueError, IndexError):
+                    start_count = 0
+
                 machine_id = crud.get_or_create_machine(db, machine_name, machine_type)
+                feature_score = (feature_count1 + feature_count2) * 10
+                diff_value = feature_score - start_count
+
+                # 生データ蓄積（aggregate が読む正の入力）
+                source_hash = hashlib.md5(
+                    f"{store_id}_{unit_number}_{target_date}".encode()
+                ).hexdigest()
+                crud.insert_raw_machine_data(
+                    db,
+                    store_id=store_id,
+                    machine_type=machine_type,
+                    unit_number=unit_number,
+                    machine_name=machine_name,
+                    target_date=target_date,
+                    total_games=start_count,
+                    bonus_count=(feature_count1 + feature_count2),
+                    payout=feature_score,
+                    diff=diff_value,
+                    source_url=url,
+                    source_hash=source_hash,
+                )
+
+                # 互換性維持
                 crud.insert_daily_result(
                     db,
                     store_id=store_id,
                     machine_id=machine_id,
-                    result_date=__import__('datetime').date.today()
+                    result_date=target_date,
+                    games_count=start_count,
+                    medals_in=feature_score,
+                    medals_out=0,
+                    diff=diff_value,
                 )
                 saved_count += 1
 
@@ -269,10 +317,29 @@ async def run_daily_predictions_job():
             store_name = store_row[1]
 
             try:
+                # 予測対象日は「集計済みの最新日（＝直近スクレイプ済み日）」。
+                # 当日(date.today())は aggregate が除外しており stats 行が無いため、
+                # 固定で today を渡すと常に "No features" で 0 件になる（#11 問題B）。
+                latest_date = db.execute(
+                    text(
+                        "SELECT MAX(target_date) FROM daily_machine_stats WHERE store_id = :sid"
+                    ),
+                    {"sid": store_id},
+                ).scalar()
+
+                if latest_date is None:
+                    logger.warning(f"⚠️ No aggregated stats for {store_name}, skip")
+                    continue
+
                 # スロット当たり確率予測（内部でinsert_slot_predictionを呼ぶ）
-                predictions = slots.predict_hit_probability(db, store_id)
+                predictions = slots.predict_hit_probability(
+                    db, store_id, prediction_date=latest_date
+                )
                 total_saved += len(predictions)
-                logger.info(f"✅ {store_name}: {len(predictions)} predictions saved")
+                logger.info(
+                    f"✅ {store_name}: {len(predictions)} predictions saved "
+                    f"(prediction_date={latest_date})"
+                )
 
             except Exception as e:
                 logger.warning(f"⚠️ Failed to predict for {store_name}: {e}")
