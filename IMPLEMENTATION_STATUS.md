@@ -1,6 +1,6 @@
 # パチスロ分析プロジェクト - 実装状況レポート
 
-**更新日**: 2026-04-11  
+**更新日**: 2026-08-17（残タスクの実装状況をコード検証で反映）  
 **プロジェクト**: pachinko-analysis  
 **目的**: スロット営業データのスクレイピング・ML分析・予測システム
 
@@ -423,17 +423,21 @@ curl http://localhost:8000/api/evaluation/verify?store_id=1&days_back=1
 
 ## 📋 今後の優先順位
 
-```
-【今すぐ（最優先）】
-1. ✅ スクレイパー修正 → raw_machine_data 蓄積
-2. ✅ daily_machine_stats 集計ジョブ追加
-3. ✅ ml_features 自動生成ジョブ追加
-4. ✅ ダッシュボード UI 更新
+> **2026-08-17 更新**: 下記 1〜6 はコード検証により実装済みを確認。
+> スケジューラ各ジョブは分割ファイルではなく `backend/src/scheduler/jobs.py` に集約
+> （scrape 01:00 → aggregate 02:00 → features 02:30 → predict 03:00）。
 
-【その次】
-5. ⏳ パチンコ分析モジュール (pachinko.py)
-6. ⏳ 予測結果自動保存ジョブ追加
-7. ⏳ ダッシュボード詳細表示（SHAP等）
+```
+【実装済み（確認済み）】
+1. ✅ スクレイパー修正 → raw_machine_data 蓄積        (routers/scraper.py)
+2. ✅ daily_machine_stats 集計ジョブ                 (jobs.py:aggregate_daily_stats_job)
+3. ✅ ml_features 自動生成ジョブ                     (jobs.py:generate_ml_features_job)
+4. ✅ ダッシュボード UI 更新（残: E2E疎通検証=#4）    (dashboard.html)
+5. ✅ パチンコ分析モジュール (pachinko.py)
+6. ✅ 予測結果自動保存ジョブ                         (jobs.py:run_daily_predictions_job)
+
+【真の残タスク】
+7. ⏳ ダッシュボード詳細表示（SHAP等）  → Issue #7
 
 【今後の改善】
 8. 🔮 LightGBM への切り替え
@@ -456,9 +460,9 @@ curl http://localhost:8000/api/evaluation/verify?store_id=1&days_back=1
 | **当日データ除外** | ✅ 実装済み |
 | **DB 設計** | ✅ 完成 |
 | **スロット分析** | ✅ 完成 |
-| **パチンコ分析** | ⏳ 未実装 |
-| **ダッシュボード** | ⏳ 部分実装 |
-| **スケジューラ統合** | ⏳ 補完必要 |
+| **パチンコ分析** | ✅ 実装済み（統計ベース pachinko.py） |
+| **ダッシュボード** | ✅ 新EP対応済み（残: E2E疎通検証 #4） |
+| **スケジューラ統合** | ✅ jobs.py に集約（scrape/aggregate/features/predict） |
 
 ---
 

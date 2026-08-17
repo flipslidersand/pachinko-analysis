@@ -87,16 +87,19 @@ Scheduler (APScheduler)
 
 ## ⏳ 実装残タスク
 
+> **2026-08-17 更新**: 下記「優先度：高／中」の大半は実装済みであることをコード検証で確認。
+> スケジューラは分割ファイルではなく `scheduler/jobs.py` に集約されている。
+
 ### 優先度：高（すぐに必要）
-- [ ] スクレイパー修正 → raw_machine_data 蓄積
-- [ ] daily_machine_stats 集計ジョブ（APScheduler）
-- [ ] ml_features 自動生成ジョブ（APScheduler）
-- [ ] ダッシュボード UI 更新
+- [x] スクレイパー修正 → raw_machine_data 蓄積 … `routers/scraper.py` 実装済
+- [x] daily_machine_stats 集計ジョブ（APScheduler）… `jobs.py:aggregate_daily_stats_job` 02:00
+- [x] ml_features 自動生成ジョブ（APScheduler）… `jobs.py:generate_ml_features_job` 02:30
+- [x] ダッシュボード UI 更新 … `dashboard.html` 新EP対応済（残: E2E疎通検証 = Issue #4）
 
 ### 優先度：中（その次）
-- [ ] パチンコ分析モジュール（pachinko.py）
-- [ ] 予測結果自動保存ジョブ
-- [ ] ダッシュボード詳細グラフ追加
+- [x] パチンコ分析モジュール（pachinko.py）… 実装済（統計ベース）
+- [x] 予測結果自動保存ジョブ … `jobs.py:run_daily_predictions_job` 03:00
+- [ ] ダッシュボード詳細グラフ追加（SHAP等）… Issue #7
 
 ### 優先度：低（今後の改善）
 - [ ] LightGBM への切り替え
