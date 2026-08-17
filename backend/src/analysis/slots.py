@@ -192,7 +192,11 @@ def predict_hit_probability(
         )
 
         # 最新日のデータだけをフィルタ
-        features_for_pred = features_for_pred[features_for_pred["feature_date"] == (prediction_date - timedelta(days=0))]
+        # reset_index が必須：フィルタ後も元の行ラベルが残ると、下の
+        # hit_proba[idx]（位置ベースの numpy 配列）と添字がずれて IndexError になる
+        features_for_pred = features_for_pred[
+            features_for_pred["feature_date"] == (prediction_date - timedelta(days=0))
+        ].reset_index(drop=True)
 
         if features_for_pred.empty:
             logger.warning("⚠️ No features for prediction date")
