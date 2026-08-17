@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.database.connection import get_db
-from src.analysis import expected_value, patterns, slots, evaluation, pachinko
+from src.analysis import expected_value, patterns, slots, evaluation, pachinko, explain
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -95,6 +95,47 @@ async def get_slots_dashboard(
                 ],
                 "data_period_days": overall_ev.get("data_period_days", 0),
             }
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/slots/explain")
+async def explain_slot_predictions(
+    store_id: int,
+    machine_id: int = None,
+    top_n: int = 5,
+    db: Session = Depends(get_db)
+):
+    """スロット予測の根拠（SHAP 寄与度）を取得
+
+    予測対象日は daily_machine_stats の最新日（＝直近スクレイプ済み日）。
+
+    Args:
+        store_id: 店舗ID
+        machine_id: 特定台に絞る場合に指定（未指定で全台）
+        top_n: 各予測で返す上位寄与特徴量の数
+        db: DB セッション
+
+    Returns:
+        台ごとの hit_probability + base_value + top_features
+    """
+    try:
+        logger.info(f"🔬 Explaining slot predictions for store {store_id}")
+
+        explanations = explain.explain_store_predictions(db, store_id, top_n=top_n)
+
+        if machine_id is not None:
+            explanations = [e for e in explanations if e["machine_id"] == machine_id]
+
+        return {
+            "status": "success",
+            "store_id": store_id,
+            "machine_type": "スロット",
+            "explanations": explanations,
+            "total_count": len(explanations),
         }
 
     except Exception as e:
