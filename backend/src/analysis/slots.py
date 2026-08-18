@@ -161,7 +161,19 @@ def predict_hit_probability(
     """
     try:
         if prediction_date is None:
-            prediction_date = date.today()
+            # 予測対象日は「集計済みの最新日（＝直近スクレイプ済み日）」に解決する。
+            # 当日(date.today())は aggregate が除外して stats 行が無いため、
+            # 当日固定だと常に "No features" で 0 件になる（#11 問題B と同根）。
+            from sqlalchemy import text
+
+            prediction_date = db.execute(
+                text(
+                    "SELECT MAX(target_date) FROM daily_machine_stats WHERE store_id = :sid"
+                ),
+                {"sid": store_id},
+            ).scalar()
+            if prediction_date is None:
+                prediction_date = date.today()
 
         logger.info(f"🔮 Predicting hit probability for store {store_id}, date {prediction_date}")
 

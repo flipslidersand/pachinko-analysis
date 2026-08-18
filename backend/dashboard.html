@@ -312,6 +312,50 @@
             color: #999;
             padding: 40px 20px;
         }
+
+        .hint {
+            color: #888;
+            font-size: 0.85em;
+            margin: 4px 0 8px;
+        }
+
+        .clickable-row { cursor: pointer; }
+        .clickable-row:hover { background: #f0f7ff; }
+
+        .shap-header {
+            margin-bottom: 12px;
+            font-size: 0.95em;
+        }
+        .shap-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 6px 0;
+        }
+        .shap-name {
+            width: 160px;
+            font-size: 0.85em;
+            color: #555;
+            text-align: right;
+            flex-shrink: 0;
+        }
+        .shap-track {
+            flex: 1;
+            background: #eee;
+            border-radius: 4px;
+            height: 16px;
+            overflow: hidden;
+        }
+        .shap-bar {
+            height: 100%;
+            border-radius: 4px;
+        }
+        .shap-val {
+            width: 70px;
+            font-size: 0.85em;
+            font-variant-numeric: tabular-nums;
+            flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
@@ -361,7 +405,14 @@
             <!-- 当たり確率ランキング -->
             <div class="table-container">
                 <h2>⭐ 当たり確率ランキング（Top 10）</h2>
+                <p class="hint">行をクリックすると予測根拠（特徴量寄与度）を表示します。</p>
                 <div id="slotsHitProbTable" class="loading">読み込み中...</div>
+            </div>
+
+            <!-- 予測根拠（SHAP 寄与度） -->
+            <div class="table-container">
+                <h2>🔬 予測根拠（SHAP 特徴量寄与度）</h2>
+                <div id="slotsExplainPanel" class="empty-state">上の表から台を選択してください。</div>
             </div>
 
             <!-- 期待値ランキング -->
@@ -414,9 +465,11 @@
     <script>
         const API_BASE = 'http://localhost:8000/api';
         let accuracyChart = null;
+        let currentStoreId = null;
 
         async function loadAllDashboards() {
             const storeId = document.getElementById('storeSelect').value;
+            currentStoreId = storeId;
             document.getElementById('errorContainer').innerHTML = '';
             updateLastUpdatedTime();
 
@@ -589,7 +642,7 @@
                 const evClass = pred.expected_value >= 0 ? 'positive' : 'negative';
 
                 html += `
-                    <tr>
+                    <tr class="clickable-row" data-machine-id="${pred.machine_id}" data-machine-name="${pred.machine_name}">
                         <td>${pred.machine_name}</td>
                         <td>
                             <div class="prob-bar-container">
@@ -604,6 +657,71 @@
 
             html += '</tbody></table>';
             document.getElementById('slotsHitProbTable').innerHTML = html;
+
+            // 行クリックで予測根拠（SHAP）を表示
+            document.querySelectorAll('#slotsHitProbTable .clickable-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    const machineId = row.getAttribute('data-machine-id');
+                    const machineName = row.getAttribute('data-machine-name');
+                    loadExplain(currentStoreId, machineId, machineName);
+                });
+            });
+        }
+
+        async function loadExplain(storeId, machineId, machineName) {
+            const panel = document.getElementById('slotsExplainPanel');
+            panel.className = 'loading';
+            panel.textContent = `${machineName} の予測根拠を計算中...`;
+            try {
+                const response = await fetch(
+                    `${API_BASE}/analysis/slots/explain?store_id=${storeId}&machine_id=${machineId}&top_n=8`
+                );
+                const data = await response.json();
+                const exp = (data.explanations || [])[0];
+                if (!exp) {
+                    panel.className = 'empty-state';
+                    panel.textContent = 'この台の寄与度データがありません。';
+                    return;
+                }
+                renderExplain(exp, machineName);
+            } catch (e) {
+                panel.className = 'empty-state';
+                panel.textContent = 'エラー: ' + e.message;
+            }
+        }
+
+        function renderExplain(exp, machineName) {
+            const panel = document.getElementById('slotsExplainPanel');
+            panel.className = '';
+            const prob = (exp.hit_probability * 100).toFixed(1);
+            const base = exp.base_value != null ? (exp.base_value * 100).toFixed(1) : '—';
+            // 寄与度の絶対値で正規化してバー幅を決める
+            const maxAbs = Math.max(...exp.top_features.map(f => Math.abs(f.shap_value)), 1e-9);
+
+            let rows = '';
+            exp.top_features.forEach(f => {
+                const width = (Math.abs(f.shap_value) / maxAbs * 100).toFixed(0);
+                const up = f.direction === 'up';
+                const color = up ? '#2e7d32' : '#c62828';
+                const sign = f.shap_value >= 0 ? '+' : '';
+                rows += `
+                    <div class="shap-row">
+                        <div class="shap-name">${f.feature}</div>
+                        <div class="shap-track">
+                            <div class="shap-bar" style="width:${width}%; background:${color};"></div>
+                        </div>
+                        <div class="shap-val" style="color:${color};">${sign}${f.shap_value.toFixed(3)}</div>
+                    </div>
+                `;
+            });
+
+            panel.innerHTML = `
+                <div class="shap-header">
+                    <strong>${machineName}</strong> ｜ 当たり確率 ${prob}%（ベース ${base}%）
+                    <span class="hint">緑=押し上げ / 赤=押し下げ</span>
+                </div>
+                ${rows}
+            `;
         }
 
         function renderExpectedValueTable(evList) {
