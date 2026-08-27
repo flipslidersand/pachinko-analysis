@@ -1,6 +1,6 @@
 """ページに表示されているデータを直接抽出"""
 import sys
-sys.path.insert(0, '/home/dev-nodee/projects/pachinko-analysis/backend')
+import os; sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
 import time
 from selenium import webdriver
